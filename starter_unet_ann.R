@@ -4,10 +4,11 @@ library( ANTsRNet )
 library( keras )
 # library(tensorflow)
 
+#path to segmented reference images that comes with repo
+path = '~/ml_fish_seg/fish_segmentations'
 
-setwd("/home/kelly/INHS/fish_segmentations")
-seg_files = dir(patt='nii') #segmentation files end in nii
-img_files = dir(patt='jpg') #image files end in jpg
+seg_files = dir(patt='nii', path = path, full.names = T) #segmentation files end in nii
+img_files = dir(patt='jpg', path = path, full.names = T) #original RGB image files end in jpg
 
 
 #create empty lists for images/ segmentations to populate?
