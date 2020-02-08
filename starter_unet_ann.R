@@ -81,13 +81,13 @@ model %>% compile( loss = loss_categorical_crossentropy,
     optimizer = optimizer_adam( lr = 0.0001 )  ) #configures a Keras model for training
 
 track <- model %>% fit( X_train, Y_train,
-  epochs = 500, batch_size = 4, verbose = 1, shuffle = TRUE)
+  epochs = 200, batch_size = 4, verbose = 1, shuffle = TRUE)
 # Trains the model for a fixed number of epochs (iterations on a dataset).
 
 
 #at this point the model has been trained but not tested on any new data
 predicted <- predict( model, X_test )
-whichTestImage = 1
+whichTestImage = 2
 testimg = as.antsImage( X_test[whichTestImage,,,1] )
 seg = predicted2segmentation( Y_test[whichTestImage,,,], domainImage )
 # better approach:
