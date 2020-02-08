@@ -32,34 +32,48 @@ trainingBatchSize = length(reduced_imgs)
 domainImage <- reduced_imgs[[1]]
 
 #create empty arrays for training x/y data to fill?
-X_train <- array( data = NA, dim = c( trainingBatchSize, dim( domainImage ), 3 ) )
-Y_train <- array( data = NA, dim = c( trainingBatchSize, dim( reduced_segs[[1]] ) ) )
+X <- array( data = NA, dim = c( trainingBatchSize, dim( domainImage ), 3 ) )
+Y <- array( data = NA, dim = c( trainingBatchSize, dim( reduced_segs[[1]] ) ) )
 
 
 for( i in seq_len( trainingBatchSize ) )
     {
     cat( "Processing image", i, "\n" ) #gives visual of progress through images in training set
-    X_train[i,,, 1:3] <- as.array( reduced_imgs[[i]] ) #populate with images
-    Y_train[i,,] <- as.array( reduced_segs[[i]] ) #populate with segmentation
+    X[i,,, 1:3] <- as.array( reduced_imgs[[i]] ) #populate with images
+    Y[i,,] <- as.array( reduced_segs[[i]] ) #populate with segmentation
     }
 
-  Y_train <- encodeUnet( Y_train, segmentationLabels ) #tags segmentations with segmentation labels (1-3)
+  Y <- encodeUnet( Y, segmentationLabels ) #tags segmentations with segmentation labels (1-3)
 
   # Perform a simple normalization
 
-  X_train <- ( X_train - mean( X_train ) ) / sd( X_train )
-
+  X <- ( X - mean( X ) ) / sd( X )
+train_indices = 1:14
+X_train = X[train_indices,,,]
+Y_train = Y[train_indices,,,]
+X_test = X[-train_indices,,,]
+Y_test = Y[-train_indices,,,]
 
 model <- createUnetModel2D( c( dim( domainImage ), 3 ),
-    numberOfOutputs = 4 ) #create model with first image in test set
+    numberOfOutputs = 4 , mode = 'classification' ) #create model with first image in test set
 
 model %>% compile( loss = loss_categorical_crossentropy,
     optimizer = optimizer_adam( lr = 0.0001 )  ) #configures a Keras model for training
 
 track <- model %>% fit( X_train, Y_train,
-           epochs = 100, batch_size = 4, verbose = 1, shuffle = TRUE,
-           validation_split = 0.2 ) #Trains the model for a fixed number of epochs (iterations on a dataset).
-          #This last bit is currently struggling bc the dimentions of the image (x) and segmentation (y) arrays have different dimentions
-          #work on fixing this tomorrow when not brain dead - also save this whole thing as a rmd tomorrow here and in my helens drive
+  epochs = 10, batch_size = 4, verbose = 1, shuffle = TRUE)
+# Trains the model for a fixed number of epochs (iterations on a dataset).
 
 #at this point the model has been trained but not tested on any new data
+predicted <- predict( model, X_test )
+
+predicted2segmentation <- function( x, domainImage ) {
+  xdim = dim( x )
+  nclasses = tail( xdim, 1 )
+  nvoxels = prod( head( xdim, domainImage@dimension ) )
+  pmat = matrix( x, nrow  = nclasses, ncol = nvoxels )
+  segvec = apply( pmat, MARGIN=2, FUN=which.max )
+  makeImage( head( xdim, domainImage@dimension ), segvec )
+}
+
+seg = predicted2segmentation( predicted[1,,,], domainImage )
