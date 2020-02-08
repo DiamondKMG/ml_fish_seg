@@ -4,8 +4,19 @@ library( ANTsRNet )
 library( keras )
 # library(tensorflow)
 
+predicted2segmentation <- function( x, domainImage ) {
+  xdim = dim( x )
+  nclasses = tail( xdim, 1 )
+  nvoxels = prod( head( xdim, domainImage@dimension ) )
+  pmat = matrix( nrow = nclasses, ncol = nvoxels )
+  for ( j in 1:nclasses ) pmat[j,] = x[,,j]
+  segvec = apply( pmat, MARGIN=2, FUN=which.max )
+  seg = makeImage( head( xdim, domainImage@dimension ), segvec )
+  return( seg )
+}
+
 #path to segmented reference images that comes with repo
-path = './fish_segmentations'
+path = './fish_segmentations/'
 
 seg_files = dir(patt='nii', path = path, full.names = T) #segmentation files end in nii
 img_files = dir(patt='jpg', path = path, full.names = T) #original RGB image files end in jpg
@@ -36,44 +47,51 @@ X <- array( data = NA, dim = c( trainingBatchSize, dim( domainImage ), 3 ) )
 Y <- array( data = NA, dim = c( trainingBatchSize, dim( reduced_segs[[1]] ) ) )
 
 
-for( i in seq_len( trainingBatchSize ) )
-    {
+for( i in seq_len( trainingBatchSize ) ) {
     cat( "Processing image", i, "\n" ) #gives visual of progress through images in training set
-    X[i,,, 1:3] <- as.array( reduced_imgs[[i]] ) #populate with images
+    splitter = splitChannels( reduced_imgs[[i]] )
+    for ( j in 1:3 ) { # channels
+      X[i,,, j] <- as.array( splitter[[j]] ) #populate with images
+      }
     Y[i,,] <- as.array( reduced_segs[[i]] ) #populate with segmentation
     }
 
-  Y <- encodeUnet( Y, segmentationLabels ) #tags segmentations with segmentation labels (1-3)
+Y <- encodeUnet( Y, segmentationLabels ) #tags segmentations with segmentation labels (1-3)
 
-  # Perform a simple normalization
+# verify the encoding etc is correct
+whichTestImage = 5
+testimg = as.antsImage( X[whichTestImage,,,1] )
+segprob  = as.antsImage( Y[whichTestImage,,,2 ] )
+plot( testimg, segprob, doCropping = FALSE, window.overlay=c(0.2,1) )
+seg = predicted2segmentation( Y[whichTestImage,,,], domainImage )
+plot( testimg, seg, doCropping = FALSE, window.overlay=c(2,5) )
 
-  X <- ( X - mean( X ) ) / sd( X )
-train_indices = 1:14
+
+
+train_indices = sample(1:nrow(X), round( 0.9 * nrow(X) ) )
 X_train = X[train_indices,,,]
 Y_train = Y[train_indices,,,]
 X_test = X[-train_indices,,,]
 Y_test = Y[-train_indices,,,]
 
 model <- createUnetModel2D( c( dim( domainImage ), 3 ),
-    numberOfOutputs = 4 , mode = 'classification' ) #create model with first image in test set
+  numberOfOutputs = 4 , mode = 'classification' ) # create model with first image in test set
 
 model %>% compile( loss = loss_categorical_crossentropy,
     optimizer = optimizer_adam( lr = 0.0001 )  ) #configures a Keras model for training
 
 track <- model %>% fit( X_train, Y_train,
-  epochs = 10, batch_size = 4, verbose = 1, shuffle = TRUE)
+  epochs = 500, batch_size = 4, verbose = 1, shuffle = TRUE)
 # Trains the model for a fixed number of epochs (iterations on a dataset).
+
 
 #at this point the model has been trained but not tested on any new data
 predicted <- predict( model, X_test )
-
-predicted2segmentation <- function( x, domainImage ) {
-  xdim = dim( x )
-  nclasses = tail( xdim, 1 )
-  nvoxels = prod( head( xdim, domainImage@dimension ) )
-  pmat = matrix( x, nrow  = nclasses, ncol = nvoxels )
-  segvec = apply( pmat, MARGIN=2, FUN=which.max )
-  makeImage( head( xdim, domainImage@dimension ), segvec )
-}
-
-seg = predicted2segmentation( predicted[1,,,], domainImage )
+whichTestImage = 1
+testimg = as.antsImage( X_test[whichTestImage,,,1] )
+seg = predicted2segmentation( Y_test[whichTestImage,,,], domainImage )
+# better approach:
+#  resample probability images to full resolution, then refine, then
+#  derive segmentation from probability images - can refine with atropos
+#  or other tools
+plot( testimg, seg, doCropping = FALSE, window.overlay=c(2,5) )
