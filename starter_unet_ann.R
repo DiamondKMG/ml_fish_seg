@@ -94,4 +94,36 @@ seg = predicted2segmentation( Y_test[whichTestImage,,,], domainImage )
 #  resample probability images to full resolution, then refine, then
 #  derive segmentation from probability images - can refine with atropos
 #  or other tools
-plot( testimg, seg, doCropping = FALSE, window.overlay=c(2,5) )
+plot( testimg, seg, doCropping = FALSE, window.overlay=c(2,5), alpha=.5 )
+
+#testing the unseen 50 images with manual segmentation
+
+unseen = dir(patt='jpg', path = '50segmentations/', full.names = T)
+unseen.seg = dir(patt='gz', path = '50segmentations/', full.names = T)
+
+new.imgs = manual= list()
+
+for (i in 1:length(unseen)) new.imgs[[i]] = antsImageRead(unseen[i]) %>% 
+              resampleImage(., c(256,256), useVoxels = T)
+#for (i in 1:length(unseen.seg)) manual[[i]] = antsImageRead(unseen.seg[i]) %>% resampleImage(., c(256,256), useVoxels = T, interpType = 'nearestNeighbor')
+
+new.X <- array( data = NA, dim = c( length(unseen), dim( domainImage ), 3 ) )
+
+for( i in 1:length( unseen ) ) {
+  cat( "Processing image", i, "\n" ) #gives visual of progress through images in training set
+  splitter = splitChannels( new.imgs[[i]] )
+  for ( j in 1:3 ) { # channels
+    new.X[i,,, j] <- as.array( splitter[[j]] ) #populate with images
+  }
+}
+
+predicted <- predict( model, new.X )
+#for (i in 1:length(unseen)) whichTestImage = 1
+testimg = as.antsImage( new.X[whichTestImage,,,1] )
+seg = predicted2segmentation( Y_test[whichTestImage,,,], domainImage )
+# better approach:
+#  resample probability images to full resolution, then refine, then
+#  derive segmentation from probability images - can refine with atropos
+#  or other tools
+plot( testimg, seg, doCropping = FALSE, window.overlay=c(2,5), alpha=.5 )
+
