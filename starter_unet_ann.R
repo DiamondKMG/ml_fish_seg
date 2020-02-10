@@ -166,8 +166,10 @@ randAff <- function( loctx,  txtype = "ScaleShear", sdAffine,
               idmat = idmat$Xtilde
           if (txtype == "ScaleShear")
               idmat = idmat$P
-          flipper = diag( sample( c( 1, -1 ), 2,  replace = T ) )
-          idmat = idmat %*% flipper
+          if ( rnorm(1,0,1) < -0.3 ) { # controls frequency of flipping
+            flipper = diag( sample( c( 1, -1 ), 2,  replace = T ) )
+            idmat = idmat %*% flipper
+          }
           idparams[1:(length(idparams) - idim )] = as.numeric(idmat)
   setAntsrTransformParameters(loctx, idparams)
   setAntsrTransformFixedParameters( loctx, fixParams )
@@ -186,14 +188,14 @@ polarX <- function(X) {
 myDataAug <- function(  batch_size, shapeSD=0.05 ) {
   txType = 'ScaleShear'
   function(  ) {
-    mysam = sample( 1:nrow(X_train), batch_size )
+    mysam = sample( 1:nrow(X_train), batch_size, replace=T )
     augX = X_train[ mysam, , , ]
     augY = Y_train[ mysam, , , ]
     fixedParams = getCenterOfMass( as.antsImage( augX[1,,,1] ) * 0 + 1 )
-    loctx <- createAntsrTransform(precision = "float", type = "AffineTransform",
-            dimension = 2 )
+    loctx <- createAntsrTransform(precision = "float",
+      type = "AffineTransform", dimension = 2 )
     setAntsrTransformFixedParameters(loctx, fixedParams)
-    idparams = getAntsrTransformParameters(loctx)
+    idparams = getAntsrTransformParameters( loctx )
     setAntsrTransformParameters( loctx, idparams )
     setAntsrTransformFixedParameters(loctx, fixedParams)
     for ( i in 1:batch_size ) {
@@ -221,7 +223,6 @@ myDataAug <- function(  batch_size, shapeSD=0.05 ) {
   }
 }
 
-myGenFun <- myDataAug( 24, 0.02 )
 
 model2 <- createUnetModel2D( c( dim( domainImage ), 3 ),
    numberOfOutputs = 4 , mode = 'classification' ) # create model with first image in test set
@@ -234,22 +235,34 @@ if ( file.exists( modelfn ) ) {
 model2 %>% compile( loss = keras::loss_categorical_crossentropy,
     optimizer = optimizer_adam( lr = 0.0001 )  ) #configures a Keras model for training
 
-for ( myEpochs in 1:nEpochs ) {
-  temp = myGenFun()
+myEpochs = 1
+nEpochs = 10
+myGenFun <- myDataAug( 512, 0.025 )
+for ( myEpochs in myEpochs:nEpochs ) {
+  temp = myGenFun() # generate new training data
+  if (myEpochs == 1 ) {
+    plot( as.antsImage( temp[[1]][1,,,1]),
+      as.antsImage( temp[[2]][1,,,2] ) +
+      as.antsImage( temp[[2]][1,,,3] )*2 +
+      as.antsImage( temp[[2]][1,,,4] )*3,
+      doCropping=F, alpha=0.5)
+    }
   track <- model2 %>% fit( temp[[1]], temp[[2]], # could also use fit_generator
-    epochs = 1, batch_size = 4, verbose = 1, shuffle = TRUE)
+    epochs = 5, batch_size = 8, verbose = 1, shuffle = TRUE)
+# monitor testing data
+  predicted <- predict( model2, X_test )
+  for ( whichTestImage in sample(1:nrow( X_test ),3) ) {
+      print( whichTestImage )
+      testimg = as.antsImage( X_test[whichTestImage,,,1] )
+      realseg = as.antsImage( Y_test[whichTestImage,,,2] )
+      testseg = as.antsImage( predicted[whichTestImage,,,2] )
+      seg = predicted2segmentation( predicted[whichTestImage,,,], testimg )
+      plot( testimg, seg, doCropping = FALSE, window.overlay=c(2,5), alpha=.5 )
+      Sys.sleep( 1 )
+      }
+    }
   }
 
-predicted <- predict( model2, X_test )
-for ( whichTestImage in 1:nrow( X_test ) ) {
-  print( whichTestImage )
-  testimg = as.antsImage( X_test[whichTestImage,,,1] )
-  realseg = as.antsImage( Y_test[whichTestImage,,,2] )
-  testseg = as.antsImage( predicted[whichTestImage,,,2] )
-  seg = predicted2segmentation( predicted[whichTestImage,,,], testimg )
-  plot( testimg, seg, doCropping = FALSE, window.overlay=c(2,5), alpha=.5 )
-  Sys.sleep( 5 )
-}
 # save_model_hdf5( model2, modelfn )
 # load_model_hdf5( modelfn ) will restore the model
 # antsImageWrite(seg, filename = paste(unseen.seg[whichTestImage], "_Pred.nii.gz", sep=''))
