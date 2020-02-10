@@ -261,7 +261,6 @@ for ( myEpochs in myEpochs:nEpochs ) {
       Sys.sleep( 1 )
       }
     }
-  }
 
 # save_model_hdf5( model2, modelfn )
 # load_model_hdf5( modelfn ) will restore the model
