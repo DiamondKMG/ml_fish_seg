@@ -101,12 +101,17 @@ plot( testimg, seg, doCropping = FALSE, window.overlay=c(2,5), alpha=.5 )
 #If you want to continue from the existing model. 
 #load('./.RData')
 unseen = dir(patt='jpg', path = '50segmentations/', full.names = T)
-unseen.seg = dir(patt='gz', path = '50segmentations/', full.names = T)
+
+#if we want to calculate a dice coefficient for accuracy or something.
+#unseen.seg = dir(patt='gz', path = '50segmentations/', full.names = T)
 
 new.imgs = manual= list()
 
 for (i in 1:length(unseen)) new.imgs[[i]] = antsImageRead(unseen[i]) %>% 
               resampleImage(., c(256,256), useVoxels = T)
+
+#this is causing a strange error. I can't plot the original images with the segmentations either. 
+
 #for (i in 1:length(unseen.seg)) manual[[i]] = antsImageRead(unseen.seg[i]) %>% resampleImage(., c(256,256), useVoxels = T, interpType = 'nearestNeighbor')
 
 new.X <- array( data = NA, dim = c( length(unseen), dim( domainImage ), 3 ) )
@@ -119,13 +124,15 @@ for( i in 1:length( unseen ) ) {
   }
 }
 
+
 predicted <- predict( model, new.X )
 #for (i in 1:length(unseen)) whichTestImage = 1
 testimg = as.antsImage( new.X[whichTestImage,,,1] )
-seg = predicted2segmentation( Y_test[whichTestImage,,,], domainImage )
+seg = predicted2segmentation( predicted[whichTestImage,,,], domainImage )
 # better approach:
 #  resample probability images to full resolution, then refine, then
 #  derive segmentation from probability images - can refine with atropos
 #  or other tools
 plot( testimg, seg, doCropping = FALSE, window.overlay=c(2,5), alpha=.5 )
 
+antsImageWrite(seg, filename = paste(unseen.seg[whichTestImage], "_Pred.nii.gz", sep=''))
