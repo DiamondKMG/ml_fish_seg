@@ -98,6 +98,8 @@ plot( testimg, seg, doCropping = FALSE, window.overlay=c(2,5), alpha=.5 )
 
 #testing the unseen 50 images with manual segmentation
 
+#If you want to continue from the existing model. 
+#load('./.RData')
 unseen = dir(patt='jpg', path = '50segmentations/', full.names = T)
 unseen.seg = dir(patt='gz', path = '50segmentations/', full.names = T)
 
