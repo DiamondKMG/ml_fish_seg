@@ -17,7 +17,7 @@ predicted2segmentation <- function( x, domainImage ) {
 
 #path to segmented reference images that comes with repo
 path = './fish_segmentations/'
-modelfn = './models/starter_unet.h5'
+modelfn = './models/augmented_unet.h5'
 seg_files = dir(patt='nii', path = path, full.names = T) #segmentation files end in nii
 img_files = dir(patt='jpg', path = path, full.names = T) #original RGB image files end in jpg
 
