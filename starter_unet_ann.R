@@ -189,7 +189,7 @@ myDataAug <- function(  batch_size, shapeSD=0.05 ) {
     mysam = sample( 1:nrow(X_train), batch_size )
     augX = X_train[ mysam, , , ]
     augY = Y_train[ mysam, , , ]
-    fixedParams = getCenterOfMass( as.antsImage( augX[i,,,1] ) * 0 + 1 )
+    fixedParams = getCenterOfMass( as.antsImage( augX[1,,,1] ) * 0 + 1 )
     loctx <- createAntsrTransform(precision = "float", type = "AffineTransform",
             dimension = 2 )
     setAntsrTransformFixedParameters(loctx, fixedParams)
