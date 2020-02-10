@@ -1,8 +1,8 @@
 #load libraries
 library( ANTsR )
 library( ANTsRNet )
+library( tensorflow )
 library( keras )
-# library(tensorflow)
 
 predicted2segmentation <- function( x, domainImage ) {
   xdim = dim( x )
@@ -79,16 +79,15 @@ model <- createUnetModel2D( c( dim( domainImage ), 3 ),
 
 nEpochs = 200
 if ( file.exists( modelfn ) ) {
-  model = load_model_hdf5( modelfn )
-  nEpochs = 20 # fine tune
+  load_model_weights_hdf5( model, modelfn )
+  nEpochs = 5 # fine tune
   }
-model %>% compile( loss = loss_categorical_crossentropy,
+model %>% compile( loss = keras::loss_categorical_crossentropy,
     optimizer = optimizer_adam( lr = 0.0001 )  ) #configures a Keras model for training
 if ( nEpochs > 0 )
   track <- model %>% fit( X_train, Y_train,
     epochs = nEpochs, batch_size = 4, verbose = 1, shuffle = TRUE)
 # Trains the model for a fixed number of epochs (iterations on a dataset).
-# save_model_hdf5( model, modelfn )
 
 #at this point the model has been trained but not tested on any new data
 predicted <- predict( model, X_test )
@@ -102,7 +101,7 @@ seg = predicted2segmentation( Y_test[whichTestImage,,,], domainImage )
 plot( testimg, seg, doCropping = FALSE, window.overlay=c(2,5), alpha=.5 )
 #testing the unseen 50 images with manual segmentation
 
-#If you want to continue from the existing model. 
+#If you want to continue from the existing model.
 #load('./.RData')
 unseen = dir(patt='jpg', path = '50segmentations/', full.names = T)
 
@@ -144,14 +143,15 @@ nEpochs = 200
 # start fresh - data may not be harmonized enough
 # solution is to either harmonize or sample from both sets in training
 # probably worth just harmonizing either code or data to sample from both sets
-# or perhaps just abandon the first set of labels .... not as good. 
+# or perhaps just abandon the first set of labels .... not as good.
 # also, looks like some post-processing will help when the fish / ruler / label
 # arrangement is differently configured.
 # a more balanced sampling (with augmentation) would also resolve this.
 #
 #
 # create a generator with scaling shearing
-randAff <- function( loctx,  txtype = "ScaleShear", sdAffine) {
+randAff <- function( loctx,  txtype = "ScaleShear", sdAffine,
+  idparams, fixParams ) {
   idim = 2
   noisemat = stats::rnorm(length(idparams), mean = 0, sd = sdAffine)
   if (txtype == "Translation")
@@ -166,10 +166,14 @@ randAff <- function( loctx,  txtype = "ScaleShear", sdAffine) {
               idmat = idmat$Xtilde
           if (txtype == "ScaleShear")
               idmat = idmat$P
+          flipper = diag( sample( c( 1, -1 ), 2,  replace = T ) )
+          idmat = idmat %*% flipper
           idparams[1:(length(idparams) - idim )] = as.numeric(idmat)
   setAntsrTransformParameters(loctx, idparams)
+  setAntsrTransformFixedParameters( loctx, fixParams )
   return(loctx)
   }
+
 polarX <- function(X) {
         x_svd <- svd(X)
         P <- x_svd$u %*% diag(x_svd$d) %*% t(x_svd$u)
@@ -179,29 +183,62 @@ polarX <- function(X) {
         return(list(P = P, Z = Z, Xtilde = P %*% Z))
     }
 
-fixedParams = getCenterOfMass( manual[[1]] * 0 + 1 ) + rnorm( 2, 0, 1 )
-loctx <- createAntsrTransform(precision = "float", type = "AffineTransform",
-        dimension = 2 )
-setAntsrTransformFixedParameters(loctx, fixedParams)
-idparams = getAntsrTransformParameters(loctx)
-shapeSD = 0.05
-txType='ScaleShear'
-loctx = randAff( loctx, sdAffine=shapeSD, txtype = txType )
-augged = applyAntsrTransformToImage( loctx, new.imgs[[1]], new.imgs[[1]], interpolation = "nearestNeighbor")
-plot( splitChannels(new.imgs[[1]])[[1]], splitChannels(augged)[[1]], alpha=0.5 )
-# the above code can be put into a generator function and then 
-# applied with fit_generator in order to make the training more robust.
-# the alternative is to just train over augmented X for a given # of epochs
-# then re-augment and continue on.
+myDataAug <- function(  batch_size, shapeSD=0.05 ) {
+  txType = 'ScaleShear'
+  function(  ) {
+    mysam = sample( 1:nrow(X_train), batch_size )
+    augX = X_train[ mysam, , , ]
+    augY = Y_train[ mysam, , , ]
+    fixedParams = getCenterOfMass( as.antsImage( augX[i,,,1] ) * 0 + 1 )
+    loctx <- createAntsrTransform(precision = "float", type = "AffineTransform",
+            dimension = 2 )
+    setAntsrTransformFixedParameters(loctx, fixedParams)
+    idparams = getAntsrTransformParameters(loctx)
+    setAntsrTransformParameters( loctx, idparams )
+    setAntsrTransformFixedParameters(loctx, fixedParams)
+    for ( i in 1:batch_size ) {
+      loctx = randAff( loctx, sdAffine=shapeSD, txtype = txType,
+         idparams = idparams, fixParams = fixedParams )
+      tempX = mergeChannels( list(
+        as.antsImage( augX[i,,,1] ),
+        as.antsImage( augX[i,,,2] ),
+        as.antsImage( augX[i,,,3] ) ) )
+      tempY = mergeChannels( list(
+          as.antsImage( augY[i,,,1] ),
+          as.antsImage( augY[i,,,2] ),
+          as.antsImage( augY[i,,,3] ),
+          as.antsImage( augY[i,,,4] ) ) )
+      auggedX = applyAntsrTransformToImage( loctx, tempX, tempX,
+        interpolation = "nearestNeighbor" ) %>% splitChannels()
+      auggedY = applyAntsrTransformToImage( loctx, tempY, tempY,
+        interpolation = "nearestNeighbor" ) %>% splitChannels()
+      # return to array
+      for ( k in 1:3 ) augX[i,,,k] = as.array( auggedX[[k]] )
+      for ( k in 1:4 ) augY[i,,,k] = as.array( auggedY[[k]] )
+#      plot(  splitChannels( auggedX )[[2]],splitChannels( auggedY )[[2]],doCropping=F)
+    }
+  return( list( augX, augY ) )
+  }
+}
+
+myGenFun <- myDataAug( 24, 0.02 )
 
 model2 <- createUnetModel2D( c( dim( domainImage ), 3 ),
    numberOfOutputs = 4 , mode = 'classification' ) # create model with first image in test set
 
-model2 %>% compile( loss = loss_categorical_crossentropy,
-    optimizer = optimizer_adam( lr = 0.0001 )  ) #configures a Keras model for training
-track <- model2 %>% fit( X_train, Y_train,
-  epochs = nEpochs, batch_size = 4, verbose = 1, shuffle = TRUE)
+if ( file.exists( modelfn ) ) {
+  load_model_weights_hdf5( model2, modelfn )
+  nEpochs = 5 # fine tune
+  }
 
+model2 %>% compile( loss = keras::loss_categorical_crossentropy,
+    optimizer = optimizer_adam( lr = 0.0001 )  ) #configures a Keras model for training
+
+for ( myEpochs in 1:nEpochs ) {
+  temp = myGenFun()
+  track <- model2 %>% fit( temp[[1]], temp[[2]], # could also use fit_generator
+    epochs = 1, batch_size = 4, verbose = 1, shuffle = TRUE)
+  }
 
 predicted <- predict( model2, X_test )
 for ( whichTestImage in 1:nrow( X_test ) ) {
@@ -213,6 +250,6 @@ for ( whichTestImage in 1:nrow( X_test ) ) {
   plot( testimg, seg, doCropping = FALSE, window.overlay=c(2,5), alpha=.5 )
   Sys.sleep( 5 )
 }
-save_model_hdf5( model2, modelfn )
+# save_model_hdf5( model2, modelfn )
 # load_model_hdf5( modelfn ) will restore the model
 # antsImageWrite(seg, filename = paste(unseen.seg[whichTestImage], "_Pred.nii.gz", sep=''))
