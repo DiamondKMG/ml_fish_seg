@@ -16,13 +16,20 @@ predicted2segmentation <- function( x, domainImage ) {
   return( seg )
 }
 
+f=dir(patt='IN', path='/home/stnava/INHS/256px/', full.names =T )
+g=dir(patt='IN', path='/home/stnava/INHS/', full.names =T )
+file.names = dir(patt='IN', path='/home/stnava/INHS/256px/', full.names =F )
 
-f=dir(patt='IN', path='/home/stnava/INHS/256px/', full.names =T )[1:10]
-g=dir(patt='IN', path='/home/stnava/INHS/', full.names =T )[1:10]
-
+N=30
+#samples=1:N
+samples=sample(1:length(f), N)
+f=f[samples]
+g=g[samples]
+file.names=file.names[samples]
+  
 imglist = lapply(X = f, FUN = antsImageRead)
 full.imgs = lapply(X= g, FUN = antsImageRead)
-modelfn = './models/augmented_unet.h5'
+modelfn = '/home/maga/ml_fish_seg/models/augmented_unet.h5'
 domainImage <- imglist[[1]]
 
 new.X <- array( data = NA, dim = c( length(f), dim( domainImage ), 3 ) )
@@ -53,9 +60,9 @@ for ( whichTestImage in 1:length(f)) {
   testimg = as.antsImage( new.X[whichTestImage,,,1])
   seg = predicted2segmentation( predicted[whichTestImage,,,], testimg )
   #antsSetSpacing(seg, antsGetSpacing(imglist[[i]]))
-  thresholded = thresholdImage(seg, 1, 1)
+  thresholded = thresholdImage(seg, 2, 2)
   thresholded = iMath(thresholded, 'GetLargestComponent')
-  thresholded = iMath(thresholded, "MD", 15 )
+  thresholded = iMath(thresholded, "MD", 10 )
   
 
   thresholded = resampleImage(thresholded, dim(full.imgs[[whichTestImage]]), useVoxels = T, interpType = 'nearestNeighbor')
@@ -65,7 +72,7 @@ for ( whichTestImage in 1:length(f)) {
   masked = lapply(X=temp, FUN=maskImage, thresholded )
   cropped = lapply(X=masked, FUN=cropImage, thresholded)
   merged = mergeChannels(cropped)
-  antsImageWrite(antsImageClone(merged, 'unsigned char'), paste('/scratch/', whichTestImage, '.jpg',sep=''))
+  antsImageWrite(antsImageClone(merged, 'unsigned char'), paste('/scratch/', file.names[whichTestImage],sep=''))
   
   #plot( testimg, seg, doCropping = FALSE, window.overlay=c(2,5), alpha=.5 )
   #Sys.sleep( 2 )
