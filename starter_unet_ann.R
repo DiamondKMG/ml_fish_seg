@@ -82,7 +82,7 @@ if ( file.exists( modelfn ) ) {
   load_model_weights_hdf5( model, modelfn )
   nEpochs = 5 # fine tune
   }
-model %>% compile( loss = keras::loss_categorical_crossentropy,
+model %>% compile( loss = tf$keras$losses$categorical_crossentropy,
     optimizer = optimizer_adam( lr = 0.0001 )  ) #configures a Keras model for training
 if ( nEpochs > 0 )
   track <- model %>% fit( X_train, Y_train,
@@ -232,7 +232,7 @@ if ( file.exists( modelfn ) ) {
   nEpochs = 5 # fine tune
   }
 
-model2 %>% compile( loss = keras::loss_categorical_crossentropy,
+model2 %>% compile( loss = tf$keras$losses$categorical_crossentropy,
     optimizer = optimizer_adam( lr = 0.0001 )  ) #configures a Keras model for training
 
 myEpochs = 1
@@ -262,6 +262,16 @@ for ( myEpochs in myEpochs:nEpochs ) {
       }
     }
 
-# save_model_hdf5( model2, modelfn )
+for ( whichTestImage in 1:nrow( X_test ) ) {
+  print( whichTestImage )
+  testimg = as.antsImage( X_test[whichTestImage,,,1] )
+  realseg = as.antsImage( Y_test[whichTestImage,,,2] )
+  testseg = as.antsImage( predicted[whichTestImage,,,2] )
+  seg = predicted2segmentation( predicted[whichTestImage,,,], testimg )
+  plot( testimg, seg, doCropping = FALSE, window.overlay=c(2,5), alpha=.5 )
+  Sys.sleep( 1 )
+  }
+
+# save_model_hdf5( model2, modelfn, include_optimizer = FALSE, overwrite=TRUE )
 # load_model_hdf5( modelfn ) will restore the model
 # antsImageWrite(seg, filename = paste(unseen.seg[whichTestImage], "_Pred.nii.gz", sep=''))
